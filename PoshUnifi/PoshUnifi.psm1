@@ -24,7 +24,7 @@ function Connect-UnifiController {
 
         $Script:unifiController = ('{0}:{1}' -f $ControllerUrl, $ControllerPort)
 
-        $loginUri = ('{0}:{1}/api/login' -f $ControllerUrl, $ControllerPort)
+        $Script:loginUri = ('{0}:{1}/api/login' -f $ControllerUrl, $ControllerPort)
 
         $Script:unifiCredential = $Credential
     }
@@ -39,28 +39,35 @@ function Connect-UnifiController {
     try {
 
         $response = Invoke-RestMethod `
-            -Uri $LoginURI `
+            -Uri $Script:loginUri `
             -Method Post `
             -Body $body `
             -ContentType 'application/json; charset=utf-8' `
             -SessionVariable unifiSession `
             -ErrorAction Stop
-    
+
         if ($response.meta.rc -eq 'ok') {
-    
+
+            Write-Verbose -Message ('Connection successful to controller {0}' -f $Script:unifiController)
+
             $Script:Session = $unifiSession
         }
     }
     catch {
-    
-        Write-Error -Message ('API Connection Error: {0}' -f $_.Exception.Message)
+
+        throw ('API Connection Error: {0}' -f $_.Exception.Message)
     }
 }
 
 function Invoke-UnifiControllerBackup {
 
+    [CmdletBinding()]
+    param (
+        [string] $FilePath = ('{0}\{1}' -f $($PWD.Path), $(Get-Date -UFormat '%Y%m%d_%H%M%S'))
+    )
+
     $body = @{
-        cmd  = 'async-backup'
+        cmd  = 'backup'
         days = 7
     }
 
@@ -78,8 +85,6 @@ function Invoke-UnifiControllerBackup {
     try {
 
         $response = Invoke-RestMethod @requestParams
-
-        $response.data
     }
     catch {
 
@@ -87,29 +92,41 @@ function Invoke-UnifiControllerBackup {
 
             'The remote server returned and error: (401) Unauthorized.' {
 
+                Write-Verbose -Message 'Cookie invalid, refreshing connection'
+
                 Connect-UnifiController -Refresh
 
                 $response = Invoke-RestMethod @requestParams
-
-                $response.data
             }
             'The underlying connection was closed: An unexpected error occurred on a send.' {
 
+                Write-Verbose -Message 'Cookie invalid, refreshing connection'
+
                 Connect-UnifiController -Refresh
 
                 $response = Invoke-RestMethod @requestParams
-
-                $response.data
             }
             default {
 
-                Write-Error -Message ('API Connection Error: {0}' -f $_.Exception.Message)
+                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
             }
         }
     }
+
+    $backupFileName = ($response.data.url -split '/')[3]
+
+    Write-Host -Object ('Downloading backup file to {0}_{1}' -f $FilePath, $backupFileName)
+
+    $null = Invoke-WebRequest `
+        -Uri ('{0}{1}' -f $Script:unifiController, $response.data.url) `
+        -Method Get -OutFile ('{0}_{1}' -f $FilePath, $backupFileName) `
+        -WebSession $Script:Session
 }
 
 function Get-UnifiSite {
+
+    [CmdletBinding()]
+    param ()
 
     $requestParams = @{
         Uri         = ('{0}/api/self/sites' -f $Script:unifiController)
@@ -122,8 +139,6 @@ function Get-UnifiSite {
     try {
 
         $response = Invoke-RestMethod @requestParams
-
-        $response.data
     }
     catch {
 
@@ -131,26 +146,28 @@ function Get-UnifiSite {
 
             'The remote server returned and error: (401) Unauthorized.' {
 
+                Write-Verbose -Message 'Cookie invalid, refreshing connection'
+
                 Connect-UnifiController -Refresh
 
                 $response = Invoke-RestMethod @requestParams
-
-                $response.data
             }
             'The underlying connection was closed: An unexpected error occurred on a send.' {
 
+                Write-Verbose -Message 'Cookie invalid, refreshing connection'
+
                 Connect-UnifiController -Refresh
 
                 $response = Invoke-RestMethod @requestParams
-
-                $response.data
             }
             default {
 
-                Write-Error -Message ('API Connection Error: {0}' -f $_.Exception.Message)
+                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
             }
         }
     }
+
+    $response.data
 }
 
 function Get-UnifiSiteDevice {
@@ -204,7 +221,7 @@ function Get-UnifiSiteDevice {
             }
             default {
 
-                Write-Error -Message ('API Connection Error: {0}' -f $_.Exception.Message)
+                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
             }
         }
     }
@@ -266,7 +283,7 @@ function Invoke-RebootUnifiDevice {
             }
             default {
 
-                Write-Error -Message ('API Connection Error: {0}' -f $_.Exception.Message)
+                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
             }
         }
     }
