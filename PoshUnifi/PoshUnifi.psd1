@@ -12,7 +12,7 @@
     RootModule = 'PoshUnifi.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '0.1'
+    ModuleVersion     = '0.2'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -110,6 +110,11 @@
             ReleaseNotes = '
         Version 0.1
         - First release!
+
+        Version 0.2
+        - Fixed Invoke-BackupUnifiController function to download the file after backup.
+        - Added some error logic if controller is not connected.
+        - Updated README.md
         '
 
         } # End of PSData hashtable
