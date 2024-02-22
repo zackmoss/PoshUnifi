@@ -229,6 +229,79 @@ function Get-UnifiSiteDevice {
     $response.data
 }
 
+function Get-UnifiSiteClient {
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $SiteId,
+
+        [switch] $Known
+    )
+
+    if ($Known) {
+        $uri = ('{0}/api/s/{1}/rest/user' -f $Script:unifiController, $SiteId)
+    }
+    else {
+        $uri = ('{0}/api/s/{1}/stat/sta' -f $Script:unifiController, $SiteId)
+    }
+
+    $requestParams = @{
+        Uri         = $uri
+        Method      = 'Get'
+        ContentType = 'application/json; charset=utf-8'
+        WebSession  = $Script:Session
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    try {
+
+        $response = Invoke-RestMethod @requestParams
+    }
+    catch {
+
+        switch ($_.Exception.Message) {
+
+            'The remote server returned and error: (401) Unauthorized.' {
+
+                Write-Verbose -Message 'Cookie invalid, refreshing connection'
+
+                Connect-UnifiController -Refresh
+
+                $response = Invoke-RestMethod @requestParams
+            }
+            'The underlying connection was closed: An unexpected error occurred on a send.' {
+
+                Write-Verbose -Message 'Cookie invalid, refreshing connection'
+
+                Connect-UnifiController -Refresh
+
+                $response = Invoke-RestMethod @requestParams
+            }
+            default {
+
+                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
+            }
+        }
+    }
+
+    $response.data
+}
+
+function Get-UnifiDeviceByMAC {
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $MacAddress,
+
+        [Parameter(Mandatory)]
+        [string] $SiteId
+    )
+
+    Get-UnifiSiteDevice -SiteId $SiteId | Where-Object { $_.mac -eq $MacAddress }
+}
+
 function Invoke-RebootUnifiDevice {
 
     [CmdletBinding()]
