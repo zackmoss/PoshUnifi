@@ -16,9 +16,28 @@ function Connect-UnifiController {
         [switch] $Refresh
     )
 
-    [Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], 3072)
+    $currentProtocol = [Net.ServicePointManager]::SecurityProtocol
 
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    if ($currentProtocol.ToString().Split(',').Trim() -notcontains 'Tls12') {
+
+        [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
+    }
+
+    Add-Type -TypeDefinition @'
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+
+public class InSecureWebPolicy : ICertificatePolicy
+{
+    public bool CheckValidationResult(ServicePoint sPoint, X509Certificate cert,WebRequest wRequest, int certProb)
+    {
+        return true;
+    }
+}
+'@
+
+    $pol = [System.Net.ServicePointManager]::CertificatePolicy
+    [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName InSecureWebPolicy
 
     if (!$Refresh) {
 
@@ -57,6 +76,8 @@ function Connect-UnifiController {
 
         throw ('API Connection Error: {0}' -f $_.Exception.Message)
     }
+
+    [System.Net.ServicePointManager]::CertificatePolicy = $pol
 }
 
 function Invoke-UnifiControllerBackup {
