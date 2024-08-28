@@ -36,7 +36,6 @@ public class InSecureWebPolicy : ICertificatePolicy
 }
 '@
 
-    $pol = [System.Net.ServicePointManager]::CertificatePolicy
     [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName InSecureWebPolicy
 
     if (!$Refresh) {
@@ -76,8 +75,6 @@ public class InSecureWebPolicy : ICertificatePolicy
 
         throw ('API Connection Error: {0}' -f $_.Exception.Message)
     }
-
-    [System.Net.ServicePointManager]::CertificatePolicy = $pol
 }
 
 function Invoke-UnifiControllerBackup {
