@@ -12,7 +12,7 @@
     RootModule = 'PoshUnifi.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '0.3'
+    ModuleVersion     = '0.4'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -119,6 +119,9 @@
         Version 0.3
         - Added Get-UnifiSiteClient function
         - Added helper function Get-UnifiDeviceByMAC
+
+        Version 0.4
+        - Fixed issues with TLS self signed certificate policy when using Universal Dashboard
         '
 
         } # End of PSData hashtable
