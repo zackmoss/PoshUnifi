@@ -12,7 +12,7 @@
     RootModule = 'PoshUnifi.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '0.5'
+    ModuleVersion     = '1.0'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -125,6 +125,10 @@
 
         Version 0.5
         - Bug fix with TLS self signed certificate
+
+        Version 1.0
+        - Graduated module to v1.0
+        - README fixes
         '
 
         } # End of PSData hashtable
