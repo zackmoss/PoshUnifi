@@ -1,13 +1,13 @@
 
 # PoshUnifi
+[![PSGallery Version](https://img.shields.io/powershellgallery/v/PoshUnifi.png?style=for-the-badge&logo=powershell&label=PowerShell%20Gallery)](https://www.powershellgallery.com/packages/PoshUnifi/) [![PSGallery Downloads](https://img.shields.io/powershellgallery/dt/PoshUnifi.png?style=for-the-badge&label=Downloads)](https://www.powershellgallery.com/packages/PoshUnifi/)
+
 PowerShell Module for Self Hosted Unifi Controller
 
 All updates to this repo will be uploaded to the PowerShell Gallery
 
-[PowerShell Gallery Link](https://www.powershellgallery.com/packages/PoshUnifi)
-
 ## Install Using PowerShell Gallery
-    Install-Module -Name PoshSophos
+    Install-Module -Name PoshUnifi
 
 ## Usage
 To get started using this module you will need an administrator account on the Self Hosted Unifi controller.
