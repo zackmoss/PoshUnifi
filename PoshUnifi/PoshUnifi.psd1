@@ -12,7 +12,7 @@
     RootModule = 'PoshUnifi.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '1.0'
+    ModuleVersion     = '1.0.1'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -129,6 +129,14 @@
         Version 1.0
         - Graduated module to v1.0
         - README fixes
+
+        Version 1.0.1
+        - Breaking changes ** Removed -Refresh from Connect-UnifiController as it is no longer needed **
+        - Added support for PowerShell Core with backwards compatability with Windows PowerShell
+        - Simplified redundant code inside functions by creating a new Invoke-UnifiRestMethod function
+        - Added Disconnect-UnifiController function to clean up sessions
+        - Added helper function to convert objects to proper output
+        - Added functions Get-UnifiSiteSetting, Get-UnifiSiteHealth
         '
 
         } # End of PSData hashtable

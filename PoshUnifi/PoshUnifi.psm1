@@ -10,10 +10,7 @@ function Connect-UnifiController {
         [string] $ControllerPort = '8443',
 
         [Parameter(ParameterSetName = 'Connect', Mandatory)]
-        [pscredential] $Credential,
-
-        [Parameter(ParameterSetName = 'Refresh')]
-        [switch] $Refresh
+        [pscredential] $Credential
     )
 
     $currentProtocol = [Net.ServicePointManager]::SecurityProtocol
@@ -23,58 +20,228 @@ function Connect-UnifiController {
         [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
     }
 
-    Add-Type -TypeDefinition @'
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
+    $Script:unifiController = ('{0}:{1}' -f $ControllerUrl, $ControllerPort)
 
-public class InSecureWebPolicy : ICertificatePolicy
-{
-    public bool CheckValidationResult(ServicePoint sPoint, X509Certificate cert,WebRequest wRequest, int certProb)
-    {
-        return true;
-    }
-}
-'@
+    $Script:loginUri = ('{0}:{1}/api/login' -f $ControllerUrl, $ControllerPort)
 
-    [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName InSecureWebPolicy
+    $Script:unifiCredential = $Credential
 
-    if (!$Refresh) {
+    if (-not $Global:UnifiSession) {
 
-        $Script:unifiController = ('{0}:{1}' -f $ControllerUrl, $ControllerPort)
+        Write-Verbose 'Creating new websession'
 
-        $Script:loginUri = ('{0}:{1}/api/login' -f $ControllerUrl, $ControllerPort)
-
-        $Script:unifiCredential = $Credential
+        $Global:UnifiSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     }
 
     $body = @{
-        username = $Script:unifiCredential.UserName
-        password = $Script:unifiCredential.GetNetworkCredential().Password
+        username = $unifiCredential.UserName
+        password = $unifiCredential.GetNetworkCredential().Password
+    } | ConvertTo-Json
+
+    $requestParams = @{
+        Uri         = $loginUri
+        Method      = 'Post'
+        Body        = $body
+        ContentType = 'application/json; charset=utf-8'
+        WebSession  = $Global:UnifiSession
     }
 
-    $body = $body | ConvertTo-Json
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
 
-    try {
+        $requestParams += @{ SkipCertificateCheck = $true }
+    }
 
-        $response = Invoke-RestMethod `
-            -Uri $Script:loginUri `
-            -Method Post `
-            -Body $body `
-            -ContentType 'application/json; charset=utf-8' `
-            -SessionVariable unifiSession `
-            -ErrorAction Stop
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+
+        $old = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
+
+        try {
+
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback] { $true }
+
+            $response = Invoke-RestMethod @requestParams
+
+            if ($response.meta.rc -eq 'ok') {
+
+                Write-Verbose -Message ('Connection successful to controller {0}' -f $Script:unifiController)
+            }
+        }
+        finally {
+
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $old
+        }
+    }
+    else {
+
+        $response = Invoke-RestMethod @requestParams
 
         if ($response.meta.rc -eq 'ok') {
 
             Write-Verbose -Message ('Connection successful to controller {0}' -f $Script:unifiController)
-
-            $Script:Session = $unifiSession
         }
     }
-    catch {
+}
 
-        throw ('API Connection Error: {0}' -f $_.Exception.Message)
+function Disconnect-UnifiController {
+
+    [CmdletBinding()]
+    param ()
+
+    $currentProtocol = [Net.ServicePointManager]::SecurityProtocol
+
+    if ($currentProtocol.ToString().Split(',').Trim() -notcontains 'Tls12') {
+
+        [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
     }
+
+    $Script:logoutUri = ('{0}/api/logout' -f $Script:unifiController)
+
+    $requestParams = @{
+        Uri         = $logoutUri
+        Method      = 'Post'
+        ContentType = 'application/json; charset=utf-8'
+    }
+
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+
+        $requestParams += @{ SkipCertificateCheck = $true }
+    }
+
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+
+        $old = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
+
+        try {
+
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback] { $true }
+
+            $response = Invoke-RestMethod @requestParams
+
+            if ($response.meta.rc -eq 'ok') {
+
+                Write-Verbose -Message ('Successfully disconnected from controller {0}' -f $Script:unifiController)
+            }
+        }
+        finally {
+
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $old
+        }
+    }
+    else {
+
+        $response = Invoke-RestMethod @requestParams
+
+        if ($response.meta.rc -eq 'ok') {
+
+            Write-Verbose -Message ('Successfully disconnected from controller {0}' -f $Script:unifiController)
+        }
+    }
+
+    Remove-Variable -Name UnifiSession -Force
+}
+
+function ConvertTo-UnifiObject {
+
+    param (
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
+        $InputObject,
+
+        [Parameter(Mandatory, ValueFromPipeline = $true)]
+        [string] $Delimiter
+    )
+
+    $outputObject = New-Object -TypeName psobject
+
+    foreach ($item in $InputObject) {
+
+        $tempObject = New-Object -TypeName psobject
+
+        if (($item | Get-Member -MemberType NoteProperty).Count -gt 2) {
+
+            foreach ($subItem in $item) {
+
+                $props = $subItem | Get-Member -MemberType NoteProperty
+
+                foreach ($prop in $props) {
+
+                    $tempObject | Add-Member -MemberType NoteProperty -Name $prop.name -Value $subItem.($prop.name)
+                }
+            }
+
+            $outputObject | Add-Member -MemberType NoteProperty -Name $item.$Delimiter -Value $tempObject
+        }
+
+    }
+
+    $outputObject
+}
+
+function Invoke-UnifiRestMethod {
+
+    [CmdletBinding()]
+    param (
+
+        [Parameter(Mandatory)]
+        [Microsoft.PowerShell.Commands.WebRequestMethod] $Method,
+
+        [Parameter(Mandatory)]
+        [Uri] $Uri,
+
+        [hashtable] $Body,
+
+        [string] $DownloadFile
+    )
+
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    if (-not $Global:UnifiSession) {
+
+        throw 'Unifi not connected. Run Connect-UnifiController to continue.'
+    }
+
+    $requestParams = @{
+        Uri         = $Uri
+        Method      = $Method
+        ContentType = 'application/json; charset=utf-8'
+        WebSession  = $Global:UnifiSession
+    }
+
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+
+        $requestParams += @{ SkipCertificateCheck = $true }
+    }
+
+    if ($Body) {
+
+        $requestParams += @{ Body = $Body }
+    }
+
+    if ($DownloadFile) {
+
+        $requestParams += @{ OutFile = $DownloadFile }
+    }
+
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+
+        $old = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
+
+        try {
+
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback] { $true }
+
+            $response = Invoke-RestMethod @requestParams
+        }
+        finally {
+
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $old
+        }
+    }
+    else {
+
+        $response = Invoke-RestMethod @requestParams
+    }
+
+    $response
 }
 
 function Invoke-UnifiControllerBackup {
@@ -87,105 +254,75 @@ function Invoke-UnifiControllerBackup {
     $body = @{
         cmd  = 'backup'
         days = 7
-    }
-
-    $body = $body | ConvertTo-Json
+    } | ConvertTo-Json
 
     $requestParams = @{
-        Uri         = ('{0}/api/s/default/cmd/backup' -f $Script:unifiController)
-        Method      = 'Post'
-        Body        = $body
-        ContentType = 'application/json; charset=utf-8'
-        WebSession  = $Script:Session
-        ErrorAction = 'Stop'
+        Uri    = ('{0}/api/s/default/cmd/backup' -f $Script:unifiController)
+        Method = 'Post'
+        Body   = $body
     }
 
-    try {
-
-        $response = Invoke-RestMethod @requestParams
-    }
-    catch {
-
-        switch ($_.Exception.Message) {
-
-            'The remote server returned and error: (401) Unauthorized.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            'The underlying connection was closed: An unexpected error occurred on a send.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            default {
-
-                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
-            }
-        }
-    }
+    $response = Invoke-UnifiRestMethod @requestParams
 
     $backupFileName = ($response.data.url -split '/')[3]
 
     Write-Host -Object ('Downloading backup file to {0}_{1}' -f $FilePath, $backupFileName)
 
-    $null = Invoke-WebRequest `
-        -Uri ('{0}{1}' -f $Script:unifiController, $response.data.url) `
-        -Method Get -OutFile ('{0}_{1}' -f $FilePath, $backupFileName) `
-        -WebSession $Script:Session
+    $backupRequestParams = @{
+        Uri     = ('{0}{1}' -f $Script:unifiController, $response.data.url)
+        Method  = 'Get'
+        OutFile = ('{0}_{1}' -f $FilePath, $backupFileName)
+    }
+
+    $null = Invoke-UnifiRestMethod @backupRequestParams
 }
 
 function Get-UnifiSite {
 
-    [CmdletBinding()]
-    param ()
-
     $requestParams = @{
-        Uri         = ('{0}/api/self/sites' -f $Script:unifiController)
-        Method      = 'Get'
-        ContentType = 'application/json; charset=utf-8'
-        WebSession  = $Script:Session
-        ErrorAction = 'Stop'
+        Uri    = ('{0}/api/self/sites' -f $Script:unifiController)
+        Method = 'Get'
     }
 
-    try {
-
-        $response = Invoke-RestMethod @requestParams
-    }
-    catch {
-
-        switch ($_.Exception.Message) {
-
-            'The remote server returned and error: (401) Unauthorized.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            'The underlying connection was closed: An unexpected error occurred on a send.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            default {
-
-                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
-            }
-        }
-    }
+    $response = Invoke-UnifiRestMethod @requestParams
 
     $response.data
+}
+
+function Get-UnifiSiteSetting {
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $SiteId
+    )
+
+    $requestParams = @{
+        Uri    = ('{0}/api/s/{1}/rest/setting' -f $Script:unifiController, $SiteId)
+        Method = 'Get'
+    }
+
+    $response = Invoke-UnifiRestMethod @requestParams
+
+    ConvertTo-UnifiObject -InputObject $response.data -Delimiter 'key'
+}
+
+function Get-UnifiSiteHealth {
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string] $SiteId
+    )
+
+    $requestParams = @{
+        Uri    = ('{0}/api/s/{1}/stat/health' -f $Script:unifiController, $SiteId)
+        Method = 'Get'
+    }
+
+    $response = Invoke-UnifiRestMethod @requestParams
+
+    ConvertTo-UnifiObject -InputObject $response.data -Delimiter 'subsystem'
 }
 
 function Get-UnifiSiteDevice {
@@ -206,43 +343,11 @@ function Get-UnifiSiteDevice {
     }
 
     $requestParams = @{
-        Uri         = $uri
-        Method      = 'Get'
-        ContentType = 'application/json; charset=utf-8'
-        WebSession  = $Script:Session
-        ErrorAction = 'Stop'
+        Uri    = $uri
+        Method = 'Get'
     }
 
-    try {
-
-        $response = Invoke-RestMethod @requestParams
-    }
-    catch {
-
-        switch ($_.Exception.Message) {
-
-            'The remote server returned and error: (401) Unauthorized.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            'The underlying connection was closed: An unexpected error occurred on a send.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            default {
-
-                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
-            }
-        }
-    }
+    $response = Invoke-UnifiRestMethod @requestParams
 
     $response.data
 }
@@ -265,43 +370,11 @@ function Get-UnifiSiteClient {
     }
 
     $requestParams = @{
-        Uri         = $uri
-        Method      = 'Get'
-        ContentType = 'application/json; charset=utf-8'
-        WebSession  = $Script:Session
-        ErrorAction = 'SilentlyContinue'
+        Uri    = $uri
+        Method = 'Get'
     }
 
-    try {
-
-        $response = Invoke-RestMethod @requestParams
-    }
-    catch {
-
-        switch ($_.Exception.Message) {
-
-            'The remote server returned and error: (401) Unauthorized.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            'The underlying connection was closed: An unexpected error occurred on a send.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            default {
-
-                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
-            }
-        }
-    }
+    $response = Invoke-UnifiRestMethod @requestParams
 
     $response.data
 }
@@ -340,44 +413,12 @@ function Invoke-RebootUnifiDevice {
     $body = $body | ConvertTo-Json
 
     $requestParams = @{
-        Uri         = ('{0}/api/s/{1}/cmd/devmgr' -f $Script:unifiController, $SiteId)
-        Method      = 'Post'
-        Body        = $body
-        ContentType = 'application/json; charset=utf-8'
-        WebSession  = $Script:Session
-        ErrorAction = 'Stop'
+        Uri    = ('{0}/api/s/{1}/cmd/devmgr' -f $Script:unifiController, $SiteId)
+        Method = 'Post'
+        Body   = $body
     }
 
-    try {
-
-        $response = Invoke-RestMethod @requestParams
-    }
-    catch {
-
-        switch ($_.Exception.Message) {
-
-            'The remote server returned and error: (401) Unauthorized.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            'The underlying connection was closed: An unexpected error occurred on a send.' {
-
-                Write-Verbose -Message 'Cookie invalid, refreshing connection'
-
-                Connect-UnifiController -Refresh
-
-                $response = Invoke-RestMethod @requestParams
-            }
-            default {
-
-                throw 'API Connection Error: Please run Connect-UnifiController to run this command.'
-            }
-        }
-    }
+    $response = Invoke-UnifiRestMethod @requestParams
 
     $response.data
 }
