@@ -12,7 +12,7 @@
     RootModule = 'PoshUnifi.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '1.0.1'
+    ModuleVersion     = '1.0.2'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -101,7 +101,7 @@
             LicenseUri   = 'https://github.com/zackmoss/PoshUnifi/blob/main/LICENSE'
 
             # A URL to the main website for this project.
-            ProjectUri   = 'https://github.com/zackmoss/Unifi'
+            ProjectUri   = 'https://github.com/zackmoss/PoshUnifi'
 
             # A URL to an icon representing this module.
             # IconUri = ''
@@ -137,6 +137,10 @@
         - Added Disconnect-UnifiController function to clean up sessions
         - Added helper function to convert objects to proper output
         - Added functions Get-UnifiSiteSetting, Get-UnifiSiteHealth
+
+        Version 1.0.2
+        - Fix for TLS1.2 on Invoke-UnifiRestMethod function
+        - Fix project url in psd1 manifest
         '
 
         } # End of PSData hashtable

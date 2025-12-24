@@ -192,7 +192,16 @@ function Invoke-UnifiRestMethod {
         [string] $DownloadFile
     )
 
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $currentProtocol = [Net.ServicePointManager]::SecurityProtocol
+
+    $currentProtocol
+
+    if ($currentProtocol.ToString().Split(',').Trim() -notcontains 'Tls12') {
+
+        [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
+    }
+
+    [Net.ServicePointManager]::SecurityProtocol
 
     if (-not $Global:UnifiSession) {
 
