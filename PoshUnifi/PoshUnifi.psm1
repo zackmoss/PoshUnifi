@@ -194,8 +194,6 @@ function Invoke-UnifiRestMethod {
 
     $currentProtocol = [Net.ServicePointManager]::SecurityProtocol
 
-    $currentProtocol
-
     if ($currentProtocol.ToString().Split(',').Trim() -notcontains 'Tls12') {
 
         [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
